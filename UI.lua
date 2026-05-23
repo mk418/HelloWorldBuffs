@@ -3,13 +3,14 @@ local _, addon = ...
 local UI = {}
 addon.UI = UI
 
-local ROW_HEIGHT      = 30
-local HEADER_HEIGHT   = 46
-local NAME_WIDTH      = 220
-local CELL_WIDTH      = 80
-local PADDING         = 8
-local CLASS_ICON_SIZE = 18
-local BUFF_ICON_SIZE  = 26
+local ROW_HEIGHT        = 30
+local HEADER_HEIGHT     = 46
+local FILTER_BAR_HEIGHT = 22
+local NAME_WIDTH        = 220
+local CELL_WIDTH        = 80
+local PADDING           = 8
+local CLASS_ICON_SIZE   = 18
+local BUFF_ICON_SIZE    = 26
 
 -- Icon of the Chronoboon Displacer item (184937), used for the column header.
 local CHRONO_ICON_PATH = "Interface\\Icons\\INV_Misc_EngGizmos_21"
@@ -43,7 +44,7 @@ local SCROLLBAR_GUTTER = 28
 local GRID_WIDTH       = NAME_WIDTH + CELL_WIDTH * TOTAL_COLS
 
 local frame = CreateFrame("Frame", "HelloWorldBuffsFrame", UIParent, "BasicFrameTemplateWithInset")
-frame:SetSize(GRID_WIDTH + PADDING * 2 + SCROLLBAR_GUTTER, 400)
+frame:SetSize(GRID_WIDTH + PADDING * 2 + SCROLLBAR_GUTTER, 400 + FILTER_BAR_HEIGHT + 4)
 frame:SetPoint("CENTER")
 frame:SetMovable(true)
 frame:EnableMouse(true)
@@ -106,10 +107,45 @@ local function EnsureLayout()
   layoutBuilt = true
 end
 
+-- Filter footer --------------------------------------------------------------
+-- Compact in-window toggles along the bottom edge. Settings persist via
+-- addon:SetSetting; the grid re-renders on each click.
+local FILTER_BAR_BOTTOM = PADDING + 4
+local filterBar = CreateFrame("Frame", nil, frame)
+filterBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PADDING + 6, FILTER_BAR_BOTTOM)
+filterBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(PADDING + 6), FILTER_BAR_BOTTOM)
+filterBar:SetHeight(FILTER_BAR_HEIGHT)
+
+local filterTopLine = filterBar:CreateTexture(nil, "OVERLAY")
+filterTopLine:SetPoint("TOPLEFT", filterBar, "TOPLEFT", 0, 1)
+filterTopLine:SetPoint("TOPRIGHT", filterBar, "TOPRIGHT", 0, 1)
+filterTopLine:SetHeight(1)
+filterTopLine:SetColorTexture(0.6, 0.6, 0.6, 0.25)
+
+local filterChecks = {}
+local function MakeFilterCheck(key, label, anchorFrame, anchorPoint, ax, ay)
+  local cb = CreateFrame("CheckButton", "HelloWorldBuffsFilter_" .. key, filterBar, "UICheckButtonTemplate")
+  cb:SetSize(20, 20)
+  cb:SetPoint("LEFT", anchorFrame, anchorPoint, ax, ay)
+  local text = _G[cb:GetName() .. "Text"]
+  text:SetFontObject("GameFontHighlightSmall")
+  text:SetText(label)
+  cb:SetScript("OnClick", function(self)
+    addon:SetSetting(key, self:GetChecked())
+  end)
+  filterChecks[key] = cb
+  return cb
+end
+
+local maxLevel = (addon.MaxLevel and addon:MaxLevel()) or 60
+local lvlCheck     = MakeFilterCheck("hideBelowMax",     ("Lvl %d only"):format(maxLevel), filterBar, "LEFT", 0, 0)
+local lvlText      = _G[lvlCheck:GetName() .. "Text"]
+local factionCheck = MakeFilterCheck("hideOtherFaction", "My faction only",                lvlText,   "RIGHT", 12, 0)
+
 -- Scroll body ----------------------------------------------------------------
 local scroll = CreateFrame("ScrollFrame", "HelloWorldBuffsScroll", frame, "UIPanelScrollFrameTemplate")
 scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
-scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, PADDING)
+scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, FILTER_BAR_BOTTOM + FILTER_BAR_HEIGHT + 2)
 
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(GRID_WIDTH, 1)
@@ -169,10 +205,22 @@ local function HideRowsFrom(index)
   for i = index, #rowPool do rowPool[i]:Hide() end
 end
 
-local function SortedCharacters()
+-- The current character is always kept in the list regardless of filter
+-- settings — hiding the logged-in row from its own UI is confusing.
+local function VisibleCharacters()
+  local s = addon:GetSettings()
+  local myKey = addon:GetMyKey()
+  local myFaction = UnitFactionGroup("player") or "Neutral"
+  local maxLevel = addon:MaxLevel()
   local list = {}
   for key, c in pairs(addon:GetCharacters()) do
-    list[#list + 1] = { key = key, char = c }
+    local keep = true
+    if key ~= myKey then
+      if not addon:IsInRealmCluster(c.realm) then keep = false end
+      if keep and s.hideBelowMax and (c.level or 0) < maxLevel then keep = false end
+      if keep and s.hideOtherFaction and c.faction and c.faction ~= myFaction then keep = false end
+    end
+    if keep then list[#list + 1] = { key = key, char = c } end
   end
   table.sort(list, function(a, b)
     local ak = (a.char.realm or "") .. (a.char.name or "")
@@ -185,7 +233,7 @@ end
 function UI:Refresh()
   if not frame:IsShown() then return end
   local now = GetServerTime()
-  local chars = SortedCharacters()
+  local chars = VisibleCharacters()
   local myKey = addon:GetMyKey()
   for i, entry in ipairs(chars) do
     local row = AcquireRow(i)
@@ -267,9 +315,17 @@ function UI:Refresh()
   content:SetHeight(math.max(1, #chars * ROW_HEIGHT))
 end
 
+local function SyncFilterChecks()
+  local s = addon:GetSettings()
+  for key, cb in pairs(filterChecks) do
+    cb:SetChecked(s[key] and true or false)
+  end
+end
+
 function UI:Toggle()
   if frame:IsShown() then frame:Hide() else
     EnsureLayout()
+    SyncFilterChecks()
     frame:ClearAllPoints()
     frame:SetPoint("CENTER")
     frame:Show()

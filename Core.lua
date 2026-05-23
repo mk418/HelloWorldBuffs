@@ -1,5 +1,7 @@
 local _, addon = ...
 
+local MAX_LEVEL = 60  -- Classic Era
+
 local function CharKey(realm, faction, name)
   return (realm or "") .. ":" .. (faction or "Neutral") .. ":" .. (name or "")
 end
@@ -7,6 +9,171 @@ end
 local function MyKey()
   return CharKey(GetRealmName(), UnitFactionGroup("player"), UnitName("player"))
 end
+
+local FILTER_DEFAULTS = {
+  hideBelowMax     = false,
+  hideOtherFaction = false,
+}
+
+-- Connected-realm membership. GetAutoCompleteRealms() returns realm names
+-- without whitespace ("MirageRaceway") while GetRealmName() and our saved
+-- character entries use the spaced form ("Mirage Raceway"). Strip whitespace
+-- before any comparison so the two forms line up.
+local function NormalizeRealm(name)
+  return (name or ""):gsub("%s", ""):lower()
+end
+
+-- Realm cluster for the logged-in player. realmClusterSet is keyed by
+-- NormalizeRealm output; realmClusterKey is a stable string used to bucket
+-- per-cluster settings. Manual override in HelloWorldBuffsDB.realmCluster
+-- wins; otherwise GetAutoCompleteRealms() supplies the set.
+local realmClusterSet
+local realmClusterKey
+
+local function BuildRealmCluster()
+  if realmClusterSet then return end
+  local set = {}
+  local function add(name)
+    local k = NormalizeRealm(name)
+    if k ~= "" then set[k] = true end
+  end
+  add(GetRealmName())  -- always part of the cluster
+  local manual = HelloWorldBuffsDB and HelloWorldBuffsDB.realmCluster
+  if manual and #manual > 0 then
+    for _, n in ipairs(manual) do add(n) end
+  elseif GetAutoCompleteRealms then
+    local list = GetAutoCompleteRealms()
+    if list then for _, n in ipairs(list) do add(n) end end
+  end
+  realmClusterSet = set
+  local names = {}
+  for name in pairs(set) do names[#names + 1] = name end
+  table.sort(names)
+  realmClusterKey = table.concat(names, "|")
+end
+
+function addon:IsInRealmCluster(realm)
+  BuildRealmCluster()
+  return realmClusterSet[NormalizeRealm(realm)] == true
+end
+
+local function InvalidateCluster()
+  realmClusterSet = nil
+  realmClusterKey = nil
+end
+
+-- After the cluster definition changes, the cluster key (and therefore the
+-- per-cluster settings bucket) changes too. Move the user's toggles over to
+-- the new key so they ride along instead of resetting to defaults.
+local function MigrateClusterSettings(oldKey)
+  if not (HelloWorldBuffsDB and HelloWorldBuffsDB.settingsByCluster) then return end
+  BuildRealmCluster()
+  local newKey = realmClusterKey
+  if oldKey and oldKey ~= newKey then
+    local old = HelloWorldBuffsDB.settingsByCluster[oldKey]
+    if old and not HelloWorldBuffsDB.settingsByCluster[newKey] then
+      HelloWorldBuffsDB.settingsByCluster[newKey] = old
+      HelloWorldBuffsDB.settingsByCluster[oldKey] = nil
+    end
+  end
+end
+
+function addon:GetClusterRealms()
+  -- Display list preserves the original spelling from saved/API sources where
+  -- possible. The current realm always comes first.
+  local out = { GetRealmName() or "(unknown)" }
+  local seen = { [NormalizeRealm(out[1])] = true }
+  local function maybeAdd(name)
+    if not name or name == "" then return end
+    local key = NormalizeRealm(name)
+    if seen[key] then return end
+    seen[key] = true
+    out[#out + 1] = name
+  end
+  local manual = HelloWorldBuffsDB and HelloWorldBuffsDB.realmCluster
+  if manual and #manual > 0 then
+    for _, n in ipairs(manual) do maybeAdd(n) end
+  elseif GetAutoCompleteRealms then
+    local list = GetAutoCompleteRealms()
+    if list then for _, n in ipairs(list) do maybeAdd(n) end end
+  end
+  return out
+end
+
+function addon:ClusterAddRealm(name)
+  name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if name == "" then return false end
+  HelloWorldBuffsDB = HelloWorldBuffsDB or {}
+  HelloWorldBuffsDB.realmCluster = HelloWorldBuffsDB.realmCluster or {}
+  local key = NormalizeRealm(name)
+  for _, n in ipairs(HelloWorldBuffsDB.realmCluster) do
+    if NormalizeRealm(n) == key then return false end
+  end
+  HelloWorldBuffsDB.realmCluster[#HelloWorldBuffsDB.realmCluster + 1] = name
+  local oldKey = realmClusterKey
+  InvalidateCluster()
+  MigrateClusterSettings(oldKey)
+  if self.UI and self.UI.Refresh then self.UI:Refresh() end
+  return true
+end
+
+function addon:ClusterRemoveRealm(name)
+  if not (HelloWorldBuffsDB and HelloWorldBuffsDB.realmCluster) then return false end
+  name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local key = NormalizeRealm(name)
+  for i, n in ipairs(HelloWorldBuffsDB.realmCluster) do
+    if NormalizeRealm(n) == key then
+      table.remove(HelloWorldBuffsDB.realmCluster, i)
+      local oldKey = realmClusterKey
+      InvalidateCluster()
+      MigrateClusterSettings(oldKey)
+      if self.UI and self.UI.Refresh then self.UI:Refresh() end
+      return true
+    end
+  end
+  return false
+end
+
+function addon:ClusterReset()
+  if HelloWorldBuffsDB then HelloWorldBuffsDB.realmCluster = nil end
+  local oldKey = realmClusterKey
+  InvalidateCluster()
+  MigrateClusterSettings(oldKey)
+  if self.UI and self.UI.Refresh then self.UI:Refresh() end
+end
+
+local function EnsureSettings()
+  HelloWorldBuffsDB = HelloWorldBuffsDB or {}
+  HelloWorldBuffsDB.settingsByCluster = HelloWorldBuffsDB.settingsByCluster or {}
+  BuildRealmCluster()
+  local s = HelloWorldBuffsDB.settingsByCluster[realmClusterKey]
+  if not s then
+    -- Migrate the single legacy settings table into the current cluster the
+    -- first time a per-cluster bucket is needed here. Without this the user
+    -- would lose the toggles they set before per-cluster storage existed.
+    if HelloWorldBuffsDB.settings then
+      s = HelloWorldBuffsDB.settings
+      HelloWorldBuffsDB.settings = nil
+    else
+      s = {}
+    end
+    HelloWorldBuffsDB.settingsByCluster[realmClusterKey] = s
+  end
+  for k, v in pairs(FILTER_DEFAULTS) do
+    if s[k] == nil then s[k] = v end
+  end
+  return s
+end
+
+function addon:GetSettings() return EnsureSettings() end
+
+function addon:SetSetting(key, value)
+  local s = EnsureSettings()
+  s[key] = value and true or false
+  if self.UI and self.UI.Refresh then self.UI:Refresh() end
+end
+
+function addon:MaxLevel() return MAX_LEVEL end
 
 local function EnsureDB()
   HelloWorldBuffsDB = HelloWorldBuffsDB or {}
@@ -196,17 +363,59 @@ frame:SetScript("OnEvent", function(_, event, arg1)
   end
 end)
 
+local function HandleClusterCmd(rest)
+  rest = (rest or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local sub, arg = rest:match("^(%S*)%s*(.*)$")
+  sub = (sub or ""):lower()
+  arg = (arg or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if sub == "" or sub == "list" or sub == "show" then
+    print("|cffffd700HelloWorldBuffs:|r realm cluster:")
+    for _, n in ipairs(addon:GetClusterRealms()) do
+      print("  " .. n)
+    end
+  elseif sub == "add" then
+    if arg == "" then
+      print("|cffffd700HelloWorldBuffs:|r usage: /hwb cluster add <RealmName>")
+    elseif addon:ClusterAddRealm(arg) then
+      print(("|cffffd700HelloWorldBuffs:|r added |cffffffff%s|r to cluster."):format(arg))
+    else
+      print(("|cffffd700HelloWorldBuffs:|r |cffffffff%s|r is already in the cluster."):format(arg))
+    end
+  elseif sub == "remove" or sub == "rm" then
+    if arg == "" then
+      print("|cffffd700HelloWorldBuffs:|r usage: /hwb cluster remove <RealmName>")
+    elseif addon:ClusterRemoveRealm(arg) then
+      print(("|cffffd700HelloWorldBuffs:|r removed |cffffffff%s|r from cluster."):format(arg))
+    else
+      print(("|cffffd700HelloWorldBuffs:|r |cffffffff%s|r is not in the cluster."):format(arg))
+    end
+  elseif sub == "reset" then
+    addon:ClusterReset()
+    print("|cffffd700HelloWorldBuffs:|r realm cluster reset to auto-detect.")
+  else
+    print("|cffffd700HelloWorldBuffs:|r cluster usage:")
+    print("  /hwb cluster                — show current cluster")
+    print("  /hwb cluster add <Realm>    — add a realm")
+    print("  /hwb cluster remove <Realm> — remove a realm")
+    print("  /hwb cluster reset          — auto-detect from API")
+  end
+end
+
 SLASH_HELLOWORLDBUFFS1 = "/hwb"
 SLASH_HELLOWORLDBUFFS2 = "/helloworldbuffs"
 SlashCmdList["HELLOWORLDBUFFS"] = function(msg)
-  msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
-  if msg == "reset" then
+  msg = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local first, rest = msg:match("^(%S*)%s*(.*)$")
+  local cmd = (first or ""):lower()
+  if cmd == "reset" then
     addon:ResetAll()
     print("|cffffd700HelloWorldBuffs:|r database reset.")
-  elseif msg == "refresh" then
+  elseif cmd == "refresh" then
     CaptureBuffs()
     print("|cffffd700HelloWorldBuffs:|r snapshot refreshed.")
-  elseif msg == "scan" then
+  elseif cmd == "cluster" then
+    HandleClusterCmd(rest)
+  elseif cmd == "scan" then
     -- Diagnostic: dump every aura on the player. When we hit the chronoboon
     -- meta-aura, also dump its tooltip lines so we can verify the parser
     -- against the actual in-game text.
