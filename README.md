@@ -1,31 +1,17 @@
 # HelloWorldBuffs
 
-A World of Warcraft Classic Era addon that tracks **world buffs across all
-your characters**. Log in on any alt and see at a glance which of your
-characters still have Rallying Cry, Spirit of Zandalar, Songflower, the DM
-tributes, Warchief's Blessing, or a DMF buff — and how long is left on each.
+A lean, opinionated world-buff tracker for WoW Classic Era — tracks world buffs across every character on your account, with live countdowns and Chronoboon awareness.
 
-## What it does
+> **Heads up** — this is a personal work in progress. I build and evolve it as I play, so features land when I need them, design choices reflect my play style, and things may change between releases. Feel free to give it a whirl and leave me some feedback, but don't expect changes that fit your play style if it doesn't fit mine.
 
-- Every time your buffs change, the addon snapshots your active world buffs
-  (using their server-relative expiration time) to an account-wide saved
-  variable.
-- A single window lists every character that has ever logged in with the
-  addon, in a grid: one row per character, one column per world buff.
-- Class-coloured character names. Live countdown ticks while the window is
-  open.
+## Caveats
 
-## Usage
+- Only works on Classic Era, no support for other game versions.
+- Tracks the canonical world buffs (Rallying Cry, Spirit of Zandalar, Songflower, Warchief's Blessing, DM tributes, DMF Sayge's Dark Fortunes) plus the Chronoboon meta-aura and its stored contents.
+- Scoped to the **connected-realm cluster** you're currently logged in on; characters on unrelated realms don't show up.
+- Two optional filters in the window footer: hide below-level-60 characters and hide opposing faction. Settings persist per cluster.
+- `/hwb` toggles the window.
 
-- `/hwb` — toggle the main window
-- `/hwb refresh` — re-snapshot the current character's buffs
-- `/hwb reset` — wipe the database
+## License
 
-Left-click the minimap button to open the window. Right-click it for options.
-
-## Status
-
-Initial scaffold. Tracks the canonical Classic Era world buffs (Rallying
-Cry, Spirit of Zandalar, Songflower, Warchief's Blessing, DM tributes, DMF
-Sayge's Dark Fortunes). Chronoboon awareness is stubbed but the meta-aura
-is captured per character.
+Released under the [MIT License](LICENSE).
