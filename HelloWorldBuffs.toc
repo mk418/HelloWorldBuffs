@@ -4,6 +4,7 @@
 ## Author: Drikk
 ## Version: @project-version@
 ## SavedVariables: HelloWorldBuffsDB
+## X-Curse-Project-ID: 1551867
 
 Buffs.lua
 Core.lua
