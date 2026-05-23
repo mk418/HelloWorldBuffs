@@ -1,0 +1,12 @@
+## Interface: 11508
+## Title: HelloWorldBuffs
+## Notes: Track world buffs across all your characters.
+## Author: Drikk
+## Version: @project-version@
+## SavedVariables: HelloWorldBuffsDB
+
+Buffs.lua
+Core.lua
+UI.lua
+Minimap.lua
+Options.lua

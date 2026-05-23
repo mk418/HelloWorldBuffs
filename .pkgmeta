@@ -1,0 +1,16 @@
+# BigWigs packager config. Used by the release-builder GitHub Action.
+
+package-as: HelloWorldBuffs
+
+# Files that should NOT end up in the released zip. The packager
+# already excludes hidden files by default, but listing key items
+# explicitly avoids surprises.
+ignore:
+    - .gitignore
+    - .pkgmeta
+    - .github
+    - README.md
+    - LICENSE
+
+# No `manual-changelog` block: the packager auto-generates the
+# changelog from git commit messages between tags.
