@@ -29,7 +29,7 @@ bg:SetPoint("TOPLEFT", 7, -5)
 
 local icon = button:CreateTexture(nil, "ARTWORK")
 icon:SetSize(17, 17)
-icon:SetTexture(134153)  -- Rallying Cry of the Dragonslayer
+icon:SetTexture("Interface\\Icons\\inv_misc_enggizmos_24")  -- Supercharged Chronoboon Displacer
 icon:SetPoint("TOPLEFT", 7, -6)
 
 local function UpdatePosition()
