@@ -46,6 +46,18 @@ local GRID_WIDTH       = NAME_WIDTH + CELL_WIDTH * TOTAL_COLS
 local frame = CreateFrame("Frame", "HelloWorldBuffsFrame", UIParent, "BasicFrameTemplateWithInset")
 frame:SetSize(GRID_WIDTH + PADDING * 2 + SCROLLBAR_GUTTER, 400 + FILTER_BAR_HEIGHT + 4)
 frame:SetPoint("CENTER")
+-- Sit on MEDIUM well above the minimap so we clear action-bar flyouts from
+-- skins like DragonflightUI (which stack a handful of levels above their
+-- parent bar), but a notch below the +100 slot used by sibling addons so
+-- those windows render on top when they overlap. Re-applied on each show
+-- because the minimap's level isn't final at file-parse time — some skins
+-- bump it after addon load.
+frame:SetFrameStrata("MEDIUM")
+local function ApplyFrameLevel()
+  local mmLevel = (Minimap and Minimap:GetFrameLevel()) or 1
+  frame:SetFrameLevel(mmLevel + 90)
+end
+ApplyFrameLevel()
 frame:SetMovable(true)
 frame:EnableMouse(true)
 frame:RegisterForDrag("LeftButton")
@@ -328,6 +340,7 @@ function UI:Toggle()
     SyncFilterChecks()
     frame:ClearAllPoints()
     frame:SetPoint("CENTER")
+    ApplyFrameLevel()
     frame:Show()
     self:Refresh()
   end
