@@ -13,7 +13,12 @@ subtitle:SetWidth(560)
 subtitle:SetJustifyH("LEFT")
 subtitle:SetText("Track world buffs across all your characters.")
 
-local minimapCheck = CreateFrame("CheckButton", "HelloWorldBuffsOptMinimap", panel, "InterfaceOptionsCheckButtonTemplate")
+-- InterfaceOptionsCheckButtonTemplate survives in 1.15.9 only inside
+-- Blizzard's DeprecatedTemplates.xml, where it is UICheckButtonTemplate at
+-- 26x26 plus an OnClick sound we overwrite below anyway — so inherit the
+-- non-deprecated base directly and keep the old footprint.
+local minimapCheck = CreateFrame("CheckButton", "HelloWorldBuffsOptMinimap", panel, "UICheckButtonTemplate")
+minimapCheck:SetSize(26, 26)
 minimapCheck:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", -2, -12)
 _G["HelloWorldBuffsOptMinimapText"]:SetText("Show minimap button")
 minimapCheck:SetScript("OnClick", function(self)
@@ -64,7 +69,10 @@ panel:SetScript("OnShow", Refresh)
 
 if Settings and Settings.RegisterCanvasLayoutCategory then
   local category = Settings.RegisterCanvasLayoutCategory(panel, "HelloWorldBuffs")
-  category.ID = "HelloWorldBuffs"
+  -- Do not override category.ID with a string: since 1.15.9,
+  -- Settings.OpenToCategory feeds the ID straight into the native
+  -- C_SettingsUtil.OpenSettingsPanel, which requires the auto-assigned
+  -- numeric ID and errors on anything else.
   Settings.RegisterAddOnCategory(category)
   addon.OptionsCategoryID = category:GetID()
 elseif InterfaceOptions_AddCategory then

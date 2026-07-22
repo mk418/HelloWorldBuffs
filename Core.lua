@@ -2,6 +2,28 @@ local _, addon = ...
 
 local MAX_LEVEL = 60  -- Classic Era
 
+-- 1.15.9 moved Era onto the shared modern UI codebase. UnitBuff,
+-- GetItemCount and GetAutoCompleteRealms now only exist as deprecation
+-- shims gated behind the loadDeprecationFallbacks CVar and are slated for
+-- removal, so prefer the namespaced replacements and fall back on older
+-- clients where C_* is absent.
+local GetBuffDataByIndex = C_UnitAuras and C_UnitAuras.GetBuffDataByIndex
+local GetItemCountCompat = (C_Item and C_Item.GetItemCount) or GetItemCount
+local GetAutoCompleteRealmsCompat =
+  (C_AutoComplete and C_AutoComplete.GetAutoCompleteRealms) or GetAutoCompleteRealms
+
+-- Returns name, duration, expirationTime, spellID for the player's buff at
+-- `index`, or nil when the slot is empty.
+local function PlayerBuff(index)
+  if GetBuffDataByIndex then
+    local aura = GetBuffDataByIndex("player", index)
+    if not aura then return nil end
+    return aura.name, aura.duration, aura.expirationTime, aura.spellId
+  end
+  local name, _, _, _, duration, expirationTime, _, _, _, spellID = UnitBuff("player", index)
+  return name, duration, expirationTime, spellID
+end
+
 local function CharKey(realm, faction, name)
   return (realm or "") .. ":" .. (faction or "Neutral") .. ":" .. (name or "")
 end
@@ -37,8 +59,8 @@ local function BuildRealmCluster()
     if k ~= "" then set[k] = true end
   end
   add(GetRealmName())  -- always part of the cluster
-  if GetAutoCompleteRealms then
-    local list = GetAutoCompleteRealms()
+  if GetAutoCompleteRealmsCompat then
+    local list = GetAutoCompleteRealmsCompat()
     if list then for _, n in ipairs(list) do add(n) end end
   end
   realmClusterSet = set
@@ -185,7 +207,7 @@ local function CaptureBuffs()
   local snapshot = {}
 
   for i = 1, 40 do
-    local _, _, _, _, duration, expirationTime, _, _, _, spellID = UnitBuff("player", i)
+    local _, duration, expirationTime, spellID = PlayerBuff(i)
     if not spellID then break end
     local wb = addon:GetWorldBuff(spellID)
     if wb then
@@ -216,7 +238,7 @@ local function CaptureBuffs()
   -- Count of Chronoboon Displacers in bags. GetItemCount only reads the
   -- local player's inventory, so other characters' rows show whatever was
   -- snapshotted on their last login.
-  c.chronoboonCount = (GetItemCount and GetItemCount(addon.CHRONOBOON_ITEM_ID) or 0)
+  c.chronoboonCount = (GetItemCountCompat and GetItemCountCompat(addon.CHRONOBOON_ITEM_ID) or 0)
 
   c.buffs = snapshot
   c.lastUpdated = now
@@ -290,7 +312,7 @@ SlashCmdList["HELLOWORLDBUFFS"] = function(msg)
     -- against the actual in-game text.
     print("|cffffd700HelloWorldBuffs:|r aura scan on player:")
     for i = 1, 40 do
-      local name, _, _, _, duration, expirationTime, _, _, _, spellID = UnitBuff("player", i)
+      local name, duration, expirationTime, spellID = PlayerBuff(i)
       if not spellID then break end
       local rem = math.max(0, (expirationTime or 0) - GetTime())
       print(("  [%d] %d %q dur=%s rem=%s"):format(

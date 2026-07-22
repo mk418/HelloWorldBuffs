@@ -1,4 +1,4 @@
-## Interface: 11508
+## Interface: 11509
 ## Title: HelloWorldBuffs
 ## Notes: Track world buffs across all your characters.
 ## Author: Drikk
