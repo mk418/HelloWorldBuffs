@@ -11,6 +11,10 @@ ignore:
     - .github
     - README.md
     - LICENSE
+    # Project image for CurseForge, not something the client needs to download.
+    # Icon.png is deliberately not listed here — the TOC's IconTexture points at
+    # it, so it has to ship.
+    - HelloWorldBuffs.png
 
 # No `manual-changelog` block: the packager auto-generates the
 # changelog from git commit messages between tags.
