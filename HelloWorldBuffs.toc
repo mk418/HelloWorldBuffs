@@ -2,7 +2,7 @@
 ## Title: HelloWorldBuffs
 ## Notes: Track world buffs across all your characters.
 ## Author: Drikk
-## Version: @project-version@
+## Version: 0.2.1
 ## SavedVariables: HelloWorldBuffsDB
 ## IconTexture: Interface\AddOns\HelloWorldBuffs\Icon.png
 ## Category: Buffs & Debuffs
